@@ -1,4 +1,4 @@
-const float hzcurve[1024] PROGMEM ={
+const float hzcurve[1024] PROGMEM = {
 0.0001,
 0.00024,
 0.00048,
