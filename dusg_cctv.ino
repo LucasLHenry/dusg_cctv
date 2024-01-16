@@ -350,60 +350,51 @@ unsigned long int previous_acc[4];
 
 
 // this is written by LUCAS to test the design
-unsigned int generator(unsigned long int acc, char waveshape, char channel) {
-  //December 12 - Adjusted for 9 bit
-  //unsigned char shifted_acc = acc>>24;
-  unsigned int shifted_acc = acc>>23;
-  #define H 255  // halfpoint
+unsigned int generator(unsigned long int acc, char waveshift, char lin, char channel) {
   #define M 511  // maxpoint
-  unsigned int shape = waveshape << 1;  // double it to get from 0 to 510
+  unsigned int shifted_acc = acc>>23;
+  float shift = (float)(waveshift << 1);  // double it to get from 0 to 510
 
+  float logval = 0;
+  float expval = 0;
+  float linval = 0;
+  if (acc < shift) {
+    logval = M - pgm_read_float_near(exptable, (int)(M / (M - shift) / shift - 1));
+    expval = pgm_read_float_near(exptable, (int)(M * acc / shift));
+    linval = M * acc / shift;
+  } else if (acc == shift) {
+    return M;
+  } else {
+    logval = M - pgm_read_float_near(exptable, (int)(M * (shift - acc) / (shift - M)) - 1);
+    expval = pgm_read_float_near(exptable, (int)((M / (M - shift)) * (M - acc)));
+    linval = (M / (M - shift)) * (M - acc);
+  }
+  return asym_lin_map(map(lin, 0, 255, -1, 1), expval, linval, logval);
+  #undef M
+}
 
-  // LINEAR SHAPESHIFT
-  // if (shifted_acc < shape) {
-  //   return M * shifted_acc / shape;
-  // } else {
-  //   return (M / (M - shape)) * (M - shifted_acc);
-  // }
+float asym_lin_map(float x, int low, int mid, int high) {
+  if (x <= -1.0) {
+    return low;
+  }
+  if (x < 0) {
+    return x * (mid - low) + mid;
+  }
+  if (x == 0.0) {
+    return mid;
+  }
+  if (x > 0) {
+    return x * (high - mid) + mid;
+  }
+  if (x >= 1.0) {
+    return high;
+  }
+}
 
-  // float expval;
-  // float logval;
-  // if (shifted_acc < H) {
-  //   logval = pgm_read_float_near(exptable + shifted_acc);
-  // } else {
-  //   logval = pgm_read_float_near(exptable + H - shifted_acc);
-  //   shifted_acc -= H;
-  // }
-  // expval = M - logval;
-
-  // return expval + (logval - expval) * waveshape / 255;
-  //waveshape = waveshape << 1;  // double it
-  // waveshape = H;
-
-  // if (shifted_acc < waveshape) {  // rising edge
-  //   return shifted_acc * M / waveshape;
-  // } else { // falling edge
-  //   return (M / (M - waveshape)) * (M - shifted_acc);
-  // }
-
-  // if (waveshape == SQUARE) {
-  // if ((shifted_acc)>H) {
-  //   return M;
-  // } else {
-  //   return 0;
-  // }
-  // }
-
-  // ---------SAW------------------
-  return(shifted_acc);
-  // ----------TRIANGLE------------
-  // if ((shifted_acc)<=H) {
-  //   return ((shifted_acc << 1));
-  // } else { // greater than H
-  //   return ((M-(shifted_acc)) << 1);
-  // }
-
-  return 0;  
+// could get divide by zero errors if min1 and max1 are the same, but only 
+// used by a function that won't do that. OPTIMISATION! 
+float linmap(float x, float min1, float max1, float min2, float max2) {
+  return (x - min1) / (max1 - min1) * (max2 - min2) + min2;
 }
 
 void setupTimers() // used to set up fast PWM on pins 1,9,2,3
