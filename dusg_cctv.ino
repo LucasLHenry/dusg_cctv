@@ -32,7 +32,8 @@ long unsigned int phasor2;
 long unsigned int phasor3;
 long unsigned int phasor4;
 
-char shape = 128; 
+char shape = 128;
+char linearity = 128;
 
 char randNum[4];
 
@@ -352,25 +353,62 @@ unsigned long int previous_acc[4];
 // this is written by LUCAS to test the design
 unsigned int generator(unsigned long int acc, char waveshift, char lin, char channel) {
   #define M 511  // maxpoint
+  #define H 255  // halfpoint
   unsigned int shifted_acc = acc>>23;
-  float shift = (float)(waveshift << 1);  // double it to get from 0 to 510
+  int shift = waveshift << 1;  // double it to get from 0 to 510
 
-  float logval = 0;
-  float expval = 0;
-  float linval = 0;
-  if (acc < shift) {
-    logval = M - pgm_read_float_near(exptable, (int)(M / (M - shift) / shift - 1));
-    expval = pgm_read_float_near(exptable, (int)(M * acc / shift));
-    linval = M * acc / shift;
-  } else if (acc == shift) {
-    return M;
-  } else {
-    logval = M - pgm_read_float_near(exptable, (int)(M * (shift - acc) / (shift - M)) - 1);
-    expval = pgm_read_float_near(exptable, (int)((M / (M - shift)) * (M - acc)));
-    linval = (M / (M - shift)) * (M - acc);
-  }
-  return asym_lin_map(map(lin, 0, 255, -1, 1), expval, linval, logval);
-  #undef M
+  // EXP SAW
+  return (unsigned int)pgm_read_float_near(exptable + acc);
+
+  // EXP TRIANGLE
+  // if (acc < H) {
+  //   return (unsigned int)pgm_read_float_near(exptable + acc*2);
+  // } else if (acc == H) {
+  //   return M;
+  // } else {
+  //   return (unsigned int)pgm_read_float_near(exptable + (H - acc)*2);
+  // }
+
+  // LOG TRIANGLE
+  // if (acc < H) {
+  //   return (unsigned int)pgm_read_float_near(exptable + (H - acc)*2);
+  // } else if (acc == H) {
+  //   return M;
+  // } else {
+  //   return (unsigned int)pgm_read_float_near(exptable + (acc - H)*2 - 1);
+  // }
+
+  // LIN SLOPESHIFT
+  // if (acc < shift) {
+  //   return M * acc / shift;
+  // } else {
+  //   return (M / (M - shift)) * (M - acc);
+  // }
+
+  // SHAPESHIFT SAW
+  // float logval = M - pgm_read_float_near(exptable + M - acc);
+  // float expval = pgm_read_float_near(exptable + acc);
+  // float linval = (float)acc;
+  // float mapped_lin = linmap(lin, 0, 255, 0, 1);
+  // return (unsigned int)asym_lin_map(mapped_lin, logval, linval, expval);
+
+
+  // SHAPESHIFT SLOPESHIFT
+  // float logval = 0;
+  // float expval = 0;
+  // float linval = 0;
+  // if (acc < shift) {
+  //   logval = M - pgm_read_float_near(exptable + (int)(M / (M - shift) / shift - 1));
+  //   expval = pgm_read_float_near(exptable + (int)(M * acc / shift));
+  //   linval = M * acc / shift * 1.0;
+  // } else if (acc == shift) {
+  //   return M;
+  // } else {
+  //   logval = M - pgm_read_float_near(exptable + (int)(M * (shift - acc) / (shift - M)) - 1);
+  //   expval = pgm_read_float_near(exptable + (int)((M / (M - shift)) * (M - acc)));
+  //   linval = (M / (M - shift)) * (M - acc) * 1.0;
+  // }
+  // return (unsigned int)asym_lin_map(map(lin, 0, 255, -1, 1), expval, linval, logval);
 }
 
 float asym_lin_map(float x, int low, int mid, int high) {
@@ -391,8 +429,8 @@ float asym_lin_map(float x, int low, int mid, int high) {
   }
 }
 
-// could get divide by zero errors if min1 and max1 are the same, but only 
-// used by a function that won't do that. OPTIMISATION! 
+// // could get divide by zero errors if min1 and max1 are the same, but only 
+// // used by a function that won't do that. OPTIMISATION! 
 float linmap(float x, float min1, float max1, float min2, float max2) {
   return (x - min1) / (max1 - min1) * (max2 - min2) + min2;
 }
@@ -473,10 +511,10 @@ void TCC0_Handler()
    accumulator3 = accumulator3 + phasor3;
    accumulator4 = accumulator4 + phasor4;
    delayMicroseconds(6);
-   REG_TCC0_CC0 = generator(accumulator1, shape,3); // pin 9 //#4
-   REG_TCC0_CC1 = generator(accumulator4, shape,0); // pin 2 //#1
-   REG_TCC0_CC2 = generator(accumulator2, shape,1); // pin 1 //#2  
-   REG_TCC0_CC3 = generator(accumulator3, shape,2); // pin 3 //#3
+   REG_TCC0_CC0 = generator(accumulator1, shape, linearity, 3); // pin 9 //#4
+   REG_TCC0_CC1 = generator(accumulator4, shape, linearity, 0); // pin 2 //#1
+   REG_TCC0_CC2 = generator(accumulator2, shape, linearity, 1); // pin 1 //#2  
+   REG_TCC0_CC3 = generator(accumulator3, shape, linearity, 2); // pin 3 //#3
    TCC0->INTFLAG.bit.CNT = 1; //*******************************************************
   }
 }
