@@ -32,7 +32,7 @@ long unsigned int phasor2;
 long unsigned int phasor3;
 long unsigned int phasor4;
 
-char shape = 128;
+char shape = 255;
 char linearity = 128;
 
 char randNum[4];
@@ -107,9 +107,9 @@ void loop() {
 
     // say what you got:
     if (new_shape_val != 0) {
-      Serial.print("shape value is: ");
-      shape = new_shape_val;
-      Serial.println(shape, DEC);
+      Serial.print("lin value is: ");
+      linearity = new_shape_val;
+      Serial.println(linearity, DEC);
     }
   }
 
@@ -307,34 +307,39 @@ void loop() {
   }
 
   filterPut(FREQ,analogRead(A4));
-  cv1Value = filterGet(FREQ);; // at this stage, a -12V CV corresponds to +3.3V (1023 as an analog read) on the XIAO (Because of the inverting op-amp)
+  cv1Value = filterGet(FREQ); // at this stage, a -12V CV corresponds to +3.3V (1023 as an analog read) on the XIAO (Because of the inverting op-amp)
   
   cv1Value = 1023-cv1Value; // so we want to invert it (making -12V correspond to 0V on the XIAO)
-  cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
-  
-  if(Mode == 1){ //better way to update sweepvalue with sync frequency
-  sweepValue = syncFrequency;
-  }
-  else
-  {
-      if( (Mode == 0) && ( (cv1Value > 20) || (cv1Value < -20) )  ){// Don't want the frequency to be considered if the cv input is close to 0 (+/- 20) 
-        int totalcv = potValue+cv1Value;
-        if(totalcv <0)
-          totalcv = 0;
-        else if(totalcv>1023)
-          totalcv = 1023;
+  // cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
+  linearity = cv1Value >> 2;  // now it's between 0 and 255
+  shape = potValue >> 2;
+  // Serial.print((int)linearity);
+  // Serial.print(", ");
+  // Serial.println((int)shape);
+
+  // if(Mode == 1){ //better way to update sweepvalue with sync frequency
+  // sweepValue = syncFrequency;
+  // }
+  // else
+  // {
+  //     if( (Mode == 0) && ( (cv1Value > 20) || (cv1Value < -20) )  ){// Don't want the frequency to be considered if the cv input is close to 0 (+/- 20) 
+  //       int totalcv = potValue+cv1Value;
+  //       if(totalcv <0)
+  //         totalcv = 0;
+  //       else if(totalcv>1023)
+  //         totalcv = 1023;
           
-        sweepValue=pgm_read_float_near(hzcurve + totalcv);
-      }
-      else
-        sweepValue=pgm_read_float_near(hzcurve + potValue);
+  //       sweepValue=pgm_read_float_near(hzcurve + totalcv);
+  //     }
+  //     else
+  //       sweepValue=pgm_read_float_near(hzcurve + potValue);
 
-  }
-
-
+  // }
 
 
-  tempphasor=sweepValue*HZPHASOR;
+
+
+  tempphasor=50*HZPHASOR;
 
 
  
@@ -355,60 +360,66 @@ unsigned int generator(unsigned long int acc, char waveshift, char lin, char cha
   #define M 511  // maxpoint
   #define H 255  // halfpoint
   unsigned int shifted_acc = acc>>23;
-  int shift = waveshift << 1;  // double it to get from 0 to 510
+  unsigned int shift = waveshift << 1;  // double it to get from 0 to 510
+  unsigned int outval;
+
+  // SAW
+  // return shifted_acc;
 
   // EXP SAW
-  return (unsigned int)pgm_read_float_near(exptable + acc);
+  // return (unsigned int)pgm_read_float_near(exptable + shifted_acc);
+  // outval = (unsigned int)fastExp(shifted_acc) - 1;
 
   // EXP TRIANGLE
-  // if (acc < H) {
-  //   return (unsigned int)pgm_read_float_near(exptable + acc*2);
-  // } else if (acc == H) {
-  //   return M;
+  // if (shifted_acc < H) {
+  //   outval = (unsigned int)fastExp(shifted_acc*2) - 1;
+  // } else if (shifted_acc == H) {
+  //   outval = M;
   // } else {
-  //   return (unsigned int)pgm_read_float_near(exptable + (H - acc)*2);
+  //   outval = (unsigned int)fastExp((M - shifted_acc)*2) - 1;
   // }
 
   // LOG TRIANGLE
-  // if (acc < H) {
-  //   return (unsigned int)pgm_read_float_near(exptable + (H - acc)*2);
-  // } else if (acc == H) {
-  //   return M;
+  // if (shifted_acc < H) {
+  //   outval = M - (unsigned int)fastExp((H - shifted_acc)*2) - 1;
+  // } else if (shifted_acc == H) {
+  //   outval = M;
   // } else {
-  //   return (unsigned int)pgm_read_float_near(exptable + (acc - H)*2 - 1);
+  //   outval = M - (unsigned int)fastExp((shifted_acc - H)*2) - 1;
   // }
 
   // LIN SLOPESHIFT
-  // if (acc < shift) {
-  //   return M * acc / shift;
+  // if (shifted_acc < shift) {
+  //   outval = (M * shifted_acc) / shift;
   // } else {
-  //   return (M / (M - shift)) * (M - acc);
+  //   outval = (M / (M - shift)) * (M - shifted_acc);
   // }
 
   // SHAPESHIFT SAW
-  // float logval = M - pgm_read_float_near(exptable + M - acc);
-  // float expval = pgm_read_float_near(exptable + acc);
-  // float linval = (float)acc;
+  // float logval = M - fastExp(M - shifted_acc);
+  // float expval = fastExp(shifted_acc);
+  // float linval = (float)shifted_acc;
   // float mapped_lin = linmap(lin, 0, 255, 0, 1);
-  // return (unsigned int)asym_lin_map(mapped_lin, logval, linval, expval);
+  // outval = (unsigned int)asym_lin_map(mapped_lin, logval, linval, expval);
 
 
   // SHAPESHIFT SLOPESHIFT
-  // float logval = 0;
-  // float expval = 0;
-  // float linval = 0;
-  // if (acc < shift) {
-  //   logval = M - pgm_read_float_near(exptable + (int)(M / (M - shift) / shift - 1));
-  //   expval = pgm_read_float_near(exptable + (int)(M * acc / shift));
-  //   linval = M * acc / shift * 1.0;
-  // } else if (acc == shift) {
-  //   return M;
-  // } else {
-  //   logval = M - pgm_read_float_near(exptable + (int)(M * (shift - acc) / (shift - M)) - 1);
-  //   expval = pgm_read_float_near(exptable + (int)((M / (M - shift)) * (M - acc)));
-  //   linval = (M / (M - shift)) * (M - acc) * 1.0;
-  // }
-  // return (unsigned int)asym_lin_map(map(lin, 0, 255, -1, 1), expval, linval, logval);
+  float logval = 0;
+  float expval = 0;
+  float linval = 0;
+
+  if (shifted_acc < shift) {
+    float scaleval = M * 1.0 / shift;
+    linval = scaleval * shifted_acc;
+    expval = fastExp(linval);
+    logval = M - fastExp(scaleval * (shift - shifted_acc));
+  } else {
+    float scaleval = M * 1.0 / (M - shift);
+    linval = scaleval * (M - shifted_acc);
+    expval = fastExp(linval);
+    logval = M - fastExp(scaleval * (shifted_acc - shift));
+  }
+  return M - (unsigned int)asym_lin_map(lin / 127.0 - 1, expval, linval, logval);
 }
 
 float asym_lin_map(float x, int low, int mid, int high) {
@@ -429,10 +440,23 @@ float asym_lin_map(float x, int low, int mid, int high) {
   }
 }
 
-// // could get divide by zero errors if min1 and max1 are the same, but only 
-// // used by a function that won't do that. OPTIMISATION! 
-float linmap(float x, float min1, float max1, float min2, float max2) {
-  return (x - min1) / (max1 - min1) * (max2 - min2) + min2;
+// Copyright 2021 Johan Rade (johan.rade@gmail.com)
+// Distributed under the MIT license (https://opensource.org/licenses/MIT)
+inline float fastExp(float x)
+{
+    constexpr float a = (1 << 23) / 0.69314718f;
+    constexpr float b = (1 << 23) * (127 - 0.043677448f);
+    constexpr float scalarval = log(511.0) / 510.0;
+    x = a * x * scalarval + b;
+
+    constexpr float c = (1 << 23);
+    constexpr float d = (1 << 23) * 255;
+    if (x < c || x > d)
+        x = (x < c) ? 0.0f : d;
+
+    uint32_t n = static_cast<uint32_t>(x);
+    memcpy(&x, &n, 4);
+    return x - 1;
 }
 
 void setupTimers() // used to set up fast PWM on pins 1,9,2,3
@@ -512,9 +536,9 @@ void TCC0_Handler()
    accumulator4 = accumulator4 + phasor4;
    delayMicroseconds(6);
    REG_TCC0_CC0 = generator(accumulator1, shape, linearity, 3); // pin 9 //#4
-   REG_TCC0_CC1 = generator(accumulator4, shape, linearity, 0); // pin 2 //#1
-   REG_TCC0_CC2 = generator(accumulator2, shape, linearity, 1); // pin 1 //#2  
-   REG_TCC0_CC3 = generator(accumulator3, shape, linearity, 2); // pin 3 //#3
+   // REG_TCC0_CC1 = generator(accumulator4, shape, linearity, 0); // pin 2 //#1
+  //  REG_TCC0_CC2 = generator(accumulator2, shape, linearity, 1); // pin 1 //#2  
+  //  REG_TCC0_CC3 = generator(accumulator3, shape, linearity, 2); // pin 3 //#3
    TCC0->INTFLAG.bit.CNT = 1; //*******************************************************
   }
 }
