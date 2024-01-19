@@ -7,14 +7,8 @@
 #include <FlashAsEEPROM_SAMD.h>
 #include <avr/pgmspace.h>
 #include "hertzvals.h"
-#include "exponential.h"
 #include <Arduino.h>
 #include <string.h>
-
-#define TRIANGLE 1
-#define SAW 2
-#define SQUARE 3
-#define RANDOM 4 
 
 #define FREQ 0
 #define POT 1
@@ -101,18 +95,6 @@ void loop() {
   static int syncCounter = 0;
   int Sync; 
 
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    char new_shape_val = (char)Serial.parseFloat(); // wraps, so watch out. Only goes to 255
-
-    // say what you got:
-    if (new_shape_val != 0) {
-      Serial.print("lin value is: ");
-      linearity = new_shape_val;
-      Serial.println(linearity, DEC);
-    }
-  }
-
 ////////////////////////////////////////////////////////////////////////////////////
 //       "EEPROM" Save                                                            //
 //       Store the settings after 60 seconds                                      //
@@ -122,167 +104,6 @@ void loop() {
     saveSettings();
     lastSettingsSave = millis();
   }
-  
-////////////////////////////////////////////////////////////////////////////////////
-//        Sync mode                                                               //
-//       sync the 1:1 output with an incoming signal                              //
-////////////////////////////////////////////////////////////////////////////////////
-     Sync = analogRead(A10); // CV2 pin A10 on XIAO 
-  
-    if((Sync < 370) && (syncState == 0)){ //if analog read CV2 is less than 370 RISING EDGE
-      Time1 = micros(); // Capture the time 
-      syncState = 1;  // set syncState to 1 
-      //This only enters on the first pulse received,
-      //following pulses alternate between syncstate 2 and 3
-      
-    }
-
-    else if((Sync > 370) && (syncState == 1)){ //FALLING
-     
-      syncState = 2; 
-    
-     }
-
-    else if((Sync < 370) && (syncState == 2)){ //NEXT RISING EDGE
-      syncState = 3;
-      Time2 = micros();
-      Mode = 1;
-      Periud = (Time2 - Time1); // Find the period by subtracting Time2 from Time1 
-      syncFrequency = 1000000;
-      syncFrequency = syncFrequency/Periud; // NEW FREQUENCY HERE 
-      
-      if(divs[divSelect-1][0] == 1)
-      {
-        //if the first divider is 1, clear acc 1 every rising edge to keep synced
-        accumulator1=0;
-      }
-      if(divs[divSelect-1][1] == 1)
-      {
-        //if the second divider is 1, clear acc 2
-        accumulator2=0;
-      }
-      if(divs[divSelect-1][2] == 1)
-      {
-        //if the third divider is 1, clear acc 3
-        accumulator3=0;
-      }
-      if(divs[divSelect-1][3] == 1)
-      {
-        //if the fourth divider is 1, clear acc 4
-        accumulator4=0;
-      }
-      
-      Time1 = Time2;
-      
-      
-      if(syncCounter == 0)  //first time calculation, clear all accs so waveform starts at 0 and begins synced
-      {
-        accumulator1=0;
-        accumulator2=0;  
-        accumulator3=0;
-        accumulator4=0;
-      }
-
-      if(syncCounter%divs[divSelect-1][0] == 0){ // div 1
-        accumulator1 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][1] == 0){ // div 2
-        accumulator2 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][2] == 0){ // div 3
-        accumulator3 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][3] ==0){ // div 4
-        accumulator4 = 0;
-      }
-    
-
-      if((syncCounter%divs[divSelect-1][0] == 0) && (syncCounter%divs[divSelect-1][1] == 0) && (syncCounter%divs[divSelect-1][2] == 0) && (syncCounter%divs[divSelect-1][3] == 0)){
-        syncCounter = 0;
-        
-      }
-      syncCounter++;
-
-    }
-    
-    else if((Sync > 370) && (syncState == 3)){ // last falling edge
-     syncState = 2;
-     
-     }   
-
-   ////////////////////////////////////////////////////////////
-   //                END OF SYNC STUFF                       //  
-   ////////////////////////////////////////////////////////////
-     
-   if(digitalRead(6)==LOW && debounceState ==0){ //button has been pressed and hasn't been previously pressed                           
-      debounceState = 1;   //real button press?
-      debounceTime = millis();
-   }
-
-   else if(debounceState == 1){
-    if((millis() - debounceTime) > 80){
-        if(digitalRead(6) == LOW){
-          debounceState = 2;
-        }
-        else{
-          debounceState = 0;
-        }
-      }
-  }
-
-   else if(debounceState == 2){
-      if(digitalRead(6) == HIGH){
-          debounceState = 0;
-          if((millis() - debounceTime) < 3000){ //short press to change waveform
-           waveSelect++;  //move to the next waveform
-              if(waveSelect>4){ //if we're trying to select more than 4 waveforms, cycle back to the 1st
-                 waveSelect=1;
-              }
-          }
-      }
-        else if((millis() - debounceTime) > 3000)  //long press to change divisions
-        {
-          debounceState = 3;
-          debounceTime=millis();
-          accumulator1=0; 
-          accumulator2=0; 
-          accumulator3=0; 
-          accumulator4=0;
-          phasor1 = 0;
-          phasor2 = 0;
-          phasor3 = 0;
-          phasor4 = 0;
-          delay(2000);
-          
-          divSelect++;
-            if(divSelect>DIVSIZE){
-               divSelect=1;
-            }
-
-        }
-      
-   }
-  else if(debounceState == 3){  //holding only
-    if((millis() - debounceTime) > 3000)  //long press
-        {
-          debounceState = 3;
-          debounceTime=millis();
-          divSelect++;
-            if(divSelect>3){
-               divSelect=1;
-            }
-
-        }
-      else if(digitalRead(6) == HIGH)
-      {
-          debounceState = 0;
-      }
-  }
-  
-   
    
   float tempphasor;
   int cv1Value; // to store value of cv1 (Frequency)
@@ -291,7 +112,6 @@ void loop() {
   static int oldpotValue; 
   filterPut(POT,analogRead(A0));
   potValue = filterGet(POT);
-  //Serial.println(potValue);
 
   //This section pops us out of sync mode
   modeCounter++;
@@ -317,37 +137,13 @@ void loop() {
   // Serial.print(", ");
   // Serial.println((int)shape);
 
-  // if(Mode == 1){ //better way to update sweepvalue with sync frequency
-  // sweepValue = syncFrequency;
-  // }
-  // else
-  // {
-  //     if( (Mode == 0) && ( (cv1Value > 20) || (cv1Value < -20) )  ){// Don't want the frequency to be considered if the cv input is close to 0 (+/- 20) 
-  //       int totalcv = potValue+cv1Value;
-  //       if(totalcv <0)
-  //         totalcv = 0;
-  //       else if(totalcv>1023)
-  //         totalcv = 1023;
-          
-  //       sweepValue=pgm_read_float_near(hzcurve + totalcv);
-  //     }
-  //     else
-  //       sweepValue=pgm_read_float_near(hzcurve + potValue);
-
-  // }
-
-
-
 
   tempphasor=50*HZPHASOR;
 
-
- 
-  phasor1=(unsigned long int)tempphasor/divs[divSelect-1][0];
-  phasor2=(unsigned long int)tempphasor/divs[divSelect-1][1]; // dividing down for the slower outputs 
-  phasor3=(unsigned long int)tempphasor/divs[divSelect-1][2];
-  phasor4=(unsigned long int)tempphasor/divs[divSelect-1][3];
-
+  phasor1=(unsigned long int)tempphasor;
+  phasor2=(unsigned long int)tempphasor; // dividing down for the slower outputs 
+  phasor3=(unsigned long int)tempphasor;
+  phasor4=(unsigned long int)tempphasor;
 }
 
 // +++++++++++++++++++++++++++++++++++++++++ FUNCTION DEFINITIONS ++++++++++++++++++++++++++++++++++
@@ -361,49 +157,7 @@ unsigned int generator(unsigned long int acc, char waveshift, char lin, char cha
   #define H 255  // halfpoint
   unsigned int shifted_acc = acc>>23;
   unsigned int shift = waveshift << 1;  // double it to get from 0 to 510
-  unsigned int outval;
 
-  // SAW
-  // return shifted_acc;
-
-  // EXP SAW
-  // return (unsigned int)pgm_read_float_near(exptable + shifted_acc);
-  // outval = (unsigned int)fastExp(shifted_acc) - 1;
-
-  // EXP TRIANGLE
-  // if (shifted_acc < H) {
-  //   outval = (unsigned int)fastExp(shifted_acc*2) - 1;
-  // } else if (shifted_acc == H) {
-  //   outval = M;
-  // } else {
-  //   outval = (unsigned int)fastExp((M - shifted_acc)*2) - 1;
-  // }
-
-  // LOG TRIANGLE
-  // if (shifted_acc < H) {
-  //   outval = M - (unsigned int)fastExp((H - shifted_acc)*2) - 1;
-  // } else if (shifted_acc == H) {
-  //   outval = M;
-  // } else {
-  //   outval = M - (unsigned int)fastExp((shifted_acc - H)*2) - 1;
-  // }
-
-  // LIN SLOPESHIFT
-  // if (shifted_acc < shift) {
-  //   outval = (M * shifted_acc) / shift;
-  // } else {
-  //   outval = (M / (M - shift)) * (M - shifted_acc);
-  // }
-
-  // SHAPESHIFT SAW
-  // float logval = M - fastExp(M - shifted_acc);
-  // float expval = fastExp(shifted_acc);
-  // float linval = (float)shifted_acc;
-  // float mapped_lin = linmap(lin, 0, 255, 0, 1);
-  // outval = (unsigned int)asym_lin_map(mapped_lin, logval, linval, expval);
-
-
-  // SHAPESHIFT SLOPESHIFT
   float logval = 0;
   float expval = 0;
   float linval = 0;
