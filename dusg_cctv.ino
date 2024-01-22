@@ -6,9 +6,11 @@
 
 #include <FlashAsEEPROM_SAMD.h>
 #include <avr/pgmspace.h>
-#include "hertzvals.h"
 #include <Arduino.h>
-#include <string.h>
+
+#include "hertzvals.h"
+#include "exponential.h"
+#include "settings.h"
 
 #define FREQ 0
 #define POT 1
@@ -26,14 +28,10 @@ long unsigned int phasor2;
 long unsigned int phasor3;
 long unsigned int phasor4;
 
-char shape = 255;
-char linearity = 128;
+uint16_t shape = 255;
+uint16_t linearity = 255;  // 0 to 511
 
 char randNum[4];
-
-FlashStorage(div_storage, int);
-FlashStorage(wave_storage, int);
-FlashStorage(init_storage, char);
 
 ////////////////////////////////////////////////////////////////////////////////////
 //       DIVIDE DOWN ARRAYS                                                       //
@@ -131,8 +129,8 @@ void loop() {
   
   cv1Value = 1023-cv1Value; // so we want to invert it (making -12V correspond to 0V on the XIAO)
   // cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
-  linearity = cv1Value >> 2;  // now it's between 0 and 255
-  shape = potValue >> 2;
+  linearity = cv1Value >> 1;  // now it's between 0 and 511
+  shape = potValue >> 1;
   // Serial.print((int)linearity);
   // Serial.print(", ");
   // Serial.println((int)shape);
@@ -152,65 +150,81 @@ unsigned long int previous_acc[4];
 
 
 // this is written by LUCAS to test the design
-unsigned int generator(unsigned long int acc, char waveshift, char lin, char channel) {
+unsigned int generator(unsigned long int acc, uint16_t shift, uint16_t lin, char channel) {
   #define M 511  // maxpoint
   #define H 255  // halfpoint
   unsigned int shifted_acc = acc>>23;
-  unsigned int shift = waveshift << 1;  // double it to get from 0 to 510
 
-  float logval = 0;
-  float expval = 0;
-  float linval = 0;
+  
+  
+  // float logval = 0;
+  // float expval = 0;
+  // float linval = 0;
 
+  // if (shifted_acc < shift) {
+  //   float scaleval = M * 1.0 / shift;
+  //   linval = scaleval * shifted_acc; //M * shifted_acc/shift
+  //   //linval is from 0 to the waveshift point
+  //   expval = fastExp(linval);
+  //   logval = M - fastExp(scaleval * (shift - shifted_acc));
+  // } else {
+  //   float scaleval = M * 1.0 / (M - shift);
+  //   linval = scaleval * (M - shifted_acc);
+  //   expval = fastExp(linval);
+  //   logval = M - fastExp(scaleval * (shifted_acc - shift));
+  // }
+  // return M - (unsigned int)asym_lin_map(lin / 127.0 - 1, expval, linval, logval);
+  // uint32_t linval = 0;
+  // uint32_t expval = 0;
+  // uint32_t logval = 0;
+
+  // if (shifted_acc < shift) {
+  //   uint32_t scaleval = M << 7 / shift;
+  //   linval = scaleval * shifted_acc; //M * shifted_acc/shift
+  //   //linval is from 0 to the waveshift point
+  //   expval = pgm_read_word_near(exptable + (linval >> 7));
+  //   logval = M << 7 - pgm_read_word_near(exptable + (scaleval * (shift - shifted_acc) >> 7));
+  // } else {
+  //   uint32_t scaleval = M << 7 / (M - shift);
+  //   linval = scaleval * (M - shifted_acc);
+  //   expval = pgm_read_word_near(exptable + (linval >> 7));
+  //   logval = M << 7 - pgm_read_word_near(exptable + (scaleval * (shifted_acc - shift) >> 7));
+  // }
+  // return M - (unsigned int)asym_lin_map(lin / 127.0 - 1, expval, linval, logval) >> 7;
+
+  uint32_t linval = 0;
+  uint32_t expval = 0;
+  uint32_t logval = 0;
   if (shifted_acc < shift) {
-    float scaleval = M * 1.0 / shift;
+    uint32_t scaleval = (M << 7) / shift;
     linval = scaleval * shifted_acc;
-    expval = fastExp(linval);
-    logval = M - fastExp(scaleval * (shift - shifted_acc));
+    expval = pgm_read_word_near(exptable + (linval >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shift - shifted_acc) >> 7));
   } else {
-    float scaleval = M * 1.0 / (M - shift);
+    uint32_t scaleval = (M << 7) / (M - shift);
     linval = scaleval * (M - shifted_acc);
-    expval = fastExp(linval);
-    logval = M - fastExp(scaleval * (shifted_acc - shift));
+    expval = pgm_read_word_near(exptable + (linval >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shifted_acc - shift) >> 7));
   }
-  return M - (unsigned int)asym_lin_map(lin / 127.0 - 1, expval, linval, logval);
+  return M - (asym_lin_map(lin, expval, linval, logval) >> 7);
 }
 
-float asym_lin_map(float x, int low, int mid, int high) {
-  if (x <= -1.0) {
+int asym_lin_map(uint16_t x, int low, int mid, int high) {
+  if (x <= 0) {
     return low;
   }
-  if (x < 0) {
-    return x * (mid - low) + mid;
+  if (x < 255) {
+    return (x * (mid - low) >> 8) + low;
   }
-  if (x == 0.0) {
+  if (x == 255) {
     return mid;
   }
-  if (x > 0) {
-    return x * (high - mid) + mid;
+  if (x > 255) {
+    return ((x - 255) * (high - mid) >> 8) + mid;
   }
-  if (x >= 1.0) {
+  if (x >= 511) {
     return high;
   }
-}
-
-// Copyright 2021 Johan Rade (johan.rade@gmail.com)
-// Distributed under the MIT license (https://opensource.org/licenses/MIT)
-inline float fastExp(float x)
-{
-    constexpr float a = (1 << 23) / 0.69314718f;
-    constexpr float b = (1 << 23) * (127 - 0.043677448f);
-    constexpr float scalarval = log(511.0) / 510.0;
-    x = a * x * scalarval + b;
-
-    constexpr float c = (1 << 23);
-    constexpr float d = (1 << 23) * 255;
-    if (x < c || x > d)
-        x = (x < c) ? 0.0f : d;
-
-    uint32_t n = static_cast<uint32_t>(x);
-    memcpy(&x, &n, 4);
-    return x - 1;
 }
 
 void setupTimers() // used to set up fast PWM on pins 1,9,2,3
@@ -297,45 +311,6 @@ void TCC0_Handler()
   }
 }
 
-
-void readSettings (void)
-{
-  char x;
-  char c = 'S';
-  int y = 1;
-  init_storage.read(x);
-  if(x == 'S')  //S means eeprom has been initialized.
-  {
-    wave_storage.read(waveSelect);
-    div_storage.read(divSelect);
-  }
-  else
-  {
-    //we initialize, no 'S' found
-    init_storage.write(c);  //use variables because this library hates constants
-    wave_storage.write(y);
-    div_storage.write(y);
-    divSelect = 1;
-    waveSelect = 1;
-  }
-
-}
-
-void saveSettings (void)
-{
-  int x;
-  wave_storage.read(x);
-  
-  if(x != waveSelect)
-    wave_storage.write(waveSelect);  // <-- save the waveSelect 
-
-   div_storage.read(x);
-  
-  if(x != divSelect)
-    div_storage.write(divSelect);  // <-- save the waveSelect  
-  
-
-}
 
 #define NUMREADINGS 50
 unsigned int pot[NUMREADINGS];
