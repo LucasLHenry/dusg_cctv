@@ -10,10 +10,9 @@
 
 #include "hertzvals.h"
 #include "exponential.h"
-#include "settings.h"
-
-#define FREQ 0
-#define POT 1
+#include "save_load.h"
+#include "filter.h"
+#include "state.h"
 
 
 #define HZPHASOR 91183 //phasor value for 1 hz.
