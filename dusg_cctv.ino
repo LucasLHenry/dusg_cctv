@@ -18,50 +18,12 @@
 #define HZPHASOR 91183 //phasor value for 1 hz.
 #define M 511
 #define H 255
-#define DEFAULT_SHIFT 255
+#define DEFAULT_SHAPE 255
 #define DEFAULT_LIN 255
+#define UPSLOPE(x) ((M << 7) / x)
+#define DOWNSLOPE(x) ((M << 7) / (M - x))
 
-
-long unsigned int accumulator1 = 0;
-long unsigned int accumulator2 = 0;
-long unsigned int accumulator3 = 0;
-long unsigned int accumulator4 = 0;
-long unsigned int phasor1;
-long unsigned int phasor2;
-long unsigned int phasor3;
-long unsigned int phasor4;
-
-uint16_t shape = 255;
-uint16_t linearity = 128;
-
-char randNum[4];
-
-////////////////////////////////////////////////////////////////////////////////////
-//       DIVIDE DOWN ARRAYS                                                       //
-//       Add more if you want!                                                    //
-////////////////////////////////////////////////////////////////////////////////////
-
-#define DIVSIZE 3 // if you add more divide down arrays, increase this number from 3 (the default number of arrays) to how many arrays you have total  
-char divs[DIVSIZE][4]={{1,3,7,11},
-                      {1,2,4,8},
-                      {1,4,8,16}}; // You could add more divide down arrays here 
-
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-
-char debounceState = 0;
-unsigned long int debounceTime = 0; 
-int waveSelect = 1;
-int divSelect = 1;
-unsigned long lastSettingsSave = 0;
-
-bool mode = 0; // 0 = POT and 1 = SYNC 
-float sweepValue;
-long unsigned int Time1 = 0;
-long unsigned int Time2 = 0; 
-long unsigned int Periud = 0; // Period (arduino didn't allow use of word "period")
-float syncFrequency = 0; 
-void timerIsr();
+// void timerIsr();
 void setupTimers();
 void TCC0_Handler();
 
@@ -85,9 +47,9 @@ void setup() {
   
 
   // state initialization
-  constexpr uint64_t default_upslope = (M << 7) / DEFAULT_SHIFT;
-  constexpr uint64_t default_downslope = (M << 7) / (M - DEFAULT_SHIFT);
-  Module default_module = {0, 0, VCO, DEFAULT_SHIFT, DEFAULT_LIN, default_upslope, default_downslope};
+  constexpr uint64_t default_upslope = UPSLOPE(DEFAULT_SHAPE);
+  constexpr uint64_t default_downslope = DOWNSLOPE(DEFAULT_SHAPE);
+  Module default_module = {0, 0, VCO, DEFAULT_SHAPE, DEFAULT_LIN, default_upslope, default_downslope};
   for (int i = 0; i < 4; i++) {
     ms.mods[0] = default_module;
   }
@@ -97,102 +59,14 @@ void setup() {
 
 void loop() {
   
-  static int modeCounter = 0;
-  bool lastButtonState = 0;
-  static bool buttonState = 0;
-  static int syncState = 0; // used to find find the leading edge to calculate period (static so it isn't updated to zero each loop)
-  static int syncCounter = 0;
-  int Sync; 
-     
-   if(digitalRead(6)==LOW && debounceState ==0){ //button has been pressed and hasn't been previously pressed                           
-      debounceState = 1;   //real button press?
-      debounceTime = millis();
-   }
-
-   else if(debounceState == 1){
-    if((millis() - debounceTime) > 80){
-        if(digitalRead(6) == LOW){
-          debounceState = 2;
-        }
-        else{
-          debounceState = 0;
-        }
-      }
-  }
-
-   else if(debounceState == 2){
-      if(digitalRead(6) == HIGH){
-          debounceState = 0;
-          if((millis() - debounceTime) < 3000){ //short press to change waveform
-           waveSelect++;  //move to the next waveform
-              if(waveSelect>4){ //if we're trying to select more than 4 waveforms, cycle back to the 1st
-                 waveSelect=1;
-              }
-          }
-      }
-        else if((millis() - debounceTime) > 3000)  //long press to change divisions
-        {
-          debounceState = 3;
-          debounceTime=millis();
-          accumulator1=0; 
-          accumulator2=0; 
-          accumulator3=0; 
-          accumulator4=0;
-          phasor1 = 0;
-          phasor2 = 0;
-          phasor3 = 0;
-          phasor4 = 0;
-          delay(2000);
-          
-          divSelect++;
-            if(divSelect>DIVSIZE){
-               divSelect=1;
-            }
-
-        }
-      
-   }
-  else if(debounceState == 3){  //holding only
-    if((millis() - debounceTime) > 3000)  //long press
-        {
-          debounceState = 3;
-          debounceTime=millis();
-          divSelect++;
-            if(divSelect>3){
-               divSelect=1;
-            }
-
-        }
-      else if(digitalRead(6) == HIGH)
-      {
-          debounceState = 0;
-      }
-  }
-  
    
    
   float tempphasor;
   int cv1Value; // to store value of cv1 (Frequency)
   static int potValue; // to store the value of the potentiometer
   
-  static int oldpotValue; 
   filterPut(POT,analogRead(A0));
   potValue = filterGet(POT);
-  //Serial.println(potValue);
-
-  //This section pops us out of sync mode
-  modeCounter++;
-  if(modeCounter>100) //do this only every 100 samples
-  {
-    if((potValue - oldpotValue)> 20 || (oldpotValue - potValue) > 20){
-      mode = 0; 
-    }
-
-    oldpotValue = potValue;
-
-    modeCounter = 0;
-  }
-
   filterPut(FREQ,analogRead(A4));
   cv1Value = filterGet(FREQ); // at this stage, a -12V CV corresponds to +3.3V (1023 as an analog read) on the XIAO (Because of the inverting op-amp)
   
@@ -209,8 +83,8 @@ void loop() {
   }
 
   if (ms.mods[0].shape != new_shape) {
-    uint32_t new_upslope = (M << 7) / new_shape;
-    uint32_t new_downslope = (M << 7) / (M - new_shape);
+    uint32_t new_upslope = UPSLOPE(new_shape);
+    uint32_t new_downslope = DOWNSLOPE(new_shape);
     for (int i = 0; i < 4; i++) {
       ms.mods[i].upslope = new_upslope;
       ms.mods[i].downslope = new_downslope;
@@ -346,11 +220,11 @@ void TCC0_Handler()
     ms.mods[1].acc += ms.mods[1].phasor;
     ms.mods[2].acc += ms.mods[2].phasor;
     ms.mods[3].acc += ms.mods[3].phasor;
-   delayMicroseconds(6);
-   REG_TCC0_CC0 = generator(ms.mods[0]); // pin 9 //#4
-   REG_TCC0_CC1 = generator(ms.mods[1]); // pin 2 //#1
-   REG_TCC0_CC2 = generator(ms.mods[2]); // pin 1 //#2  
-   REG_TCC0_CC3 = generator(ms.mods[3]); // pin 3 //#3
-   TCC0->INTFLAG.bit.CNT = 1;
+    delayMicroseconds(6);
+    REG_TCC0_CC0 = generator(ms.mods[0]); // pin 9 //#4
+    REG_TCC0_CC1 = generator(ms.mods[1]); // pin 2 //#1
+    REG_TCC0_CC2 = generator(ms.mods[2]); // pin 1 //#2  
+    REG_TCC0_CC3 = generator(ms.mods[3]); // pin 3 //#3
+    TCC0->INTFLAG.bit.CNT = 1;
   }
 }
