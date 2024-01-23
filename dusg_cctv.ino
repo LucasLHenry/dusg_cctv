@@ -37,10 +37,6 @@ char linearity = 128;
 
 char randNum[4];
 
-FlashStorage(div_storage, int);
-FlashStorage(wave_storage, int);
-FlashStorage(init_storage, char);
-
 ////////////////////////////////////////////////////////////////////////////////////
 //       DIVIDE DOWN ARRAYS                                                       //
 //       Add more if you want!                                                    //
@@ -81,8 +77,7 @@ void setup() {
   pinMode(13, OUTPUT); // using pin 13 to check interupt on timer 1
   pinMode(6, INPUT_PULLUP); // pin 7 pushbutton to select waveform
   pinMode(A10, INPUT); //used for analogReading sync (cv2) 
-  readSettings();
-  //Serial.begin(9600);
+
   setupTimers(); //  **this may not be the right location
   randomSeed(analogRead(A8));
   
@@ -100,122 +95,6 @@ void loop() {
   static int syncState = 0; // used to find find the leading edge to calculate period (static so it isn't updated to zero each loop)
   static int syncCounter = 0;
   int Sync; 
-
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    char new_shape_val = (char)Serial.parseFloat(); // wraps, so watch out. Only goes to 255
-
-    // say what you got:
-    if (new_shape_val != 0) {
-      Serial.print("lin value is: ");
-      linearity = new_shape_val;
-      Serial.println(linearity, DEC);
-    }
-  }
-
-////////////////////////////////////////////////////////////////////////////////////
-//       "EEPROM" Save                                                            //
-//       Store the settings after 60 seconds                                      //
-////////////////////////////////////////////////////////////////////////////////////
-  if((millis() - (lastSettingsSave)) > (60000))
-  {
-    saveSettings();
-    lastSettingsSave = millis();
-  }
-  
-////////////////////////////////////////////////////////////////////////////////////
-//        Sync mode                                                               //
-//       sync the 1:1 output with an incoming signal                              //
-////////////////////////////////////////////////////////////////////////////////////
-     Sync = analogRead(A10); // CV2 pin A10 on XIAO 
-  
-    if((Sync < 370) && (syncState == 0)){ //if analog read CV2 is less than 370 RISING EDGE
-      Time1 = micros(); // Capture the time 
-      syncState = 1;  // set syncState to 1 
-      //This only enters on the first pulse received,
-      //following pulses alternate between syncstate 2 and 3
-      
-    }
-
-    else if((Sync > 370) && (syncState == 1)){ //FALLING
-     
-      syncState = 2; 
-    
-     }
-
-    else if((Sync < 370) && (syncState == 2)){ //NEXT RISING EDGE
-      syncState = 3;
-      Time2 = micros();
-      Mode = 1;
-      Periud = (Time2 - Time1); // Find the period by subtracting Time2 from Time1 
-      syncFrequency = 1000000;
-      syncFrequency = syncFrequency/Periud; // NEW FREQUENCY HERE 
-      
-      if(divs[divSelect-1][0] == 1)
-      {
-        //if the first divider is 1, clear acc 1 every rising edge to keep synced
-        accumulator1=0;
-      }
-      if(divs[divSelect-1][1] == 1)
-      {
-        //if the second divider is 1, clear acc 2
-        accumulator2=0;
-      }
-      if(divs[divSelect-1][2] == 1)
-      {
-        //if the third divider is 1, clear acc 3
-        accumulator3=0;
-      }
-      if(divs[divSelect-1][3] == 1)
-      {
-        //if the fourth divider is 1, clear acc 4
-        accumulator4=0;
-      }
-      
-      Time1 = Time2;
-      
-      
-      if(syncCounter == 0)  //first time calculation, clear all accs so waveform starts at 0 and begins synced
-      {
-        accumulator1=0;
-        accumulator2=0;  
-        accumulator3=0;
-        accumulator4=0;
-      }
-
-      if(syncCounter%divs[divSelect-1][0] == 0){ // div 1
-        accumulator1 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][1] == 0){ // div 2
-        accumulator2 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][2] == 0){ // div 3
-        accumulator3 = 0;
-      }
-
-      if(syncCounter%divs[divSelect-1][3] ==0){ // div 4
-        accumulator4 = 0;
-      }
-    
-
-      if((syncCounter%divs[divSelect-1][0] == 0) && (syncCounter%divs[divSelect-1][1] == 0) && (syncCounter%divs[divSelect-1][2] == 0) && (syncCounter%divs[divSelect-1][3] == 0)){
-        syncCounter = 0;
-        
-      }
-      syncCounter++;
-
-    }
-    
-    else if((Sync > 370) && (syncState == 3)){ // last falling edge
-     syncState = 2;
-     
-     }   
-
-   ////////////////////////////////////////////////////////////
-   //                END OF SYNC STUFF                       //  
-   ////////////////////////////////////////////////////////////
      
    if(digitalRead(6)==LOW && debounceState ==0){ //button has been pressed and hasn't been previously pressed                           
       debounceState = 1;   //real button press?
@@ -311,33 +190,8 @@ void loop() {
   
   cv1Value = 1023-cv1Value; // so we want to invert it (making -12V correspond to 0V on the XIAO)
   // cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
-  linearity = cv1Value >> 2;  // now it's between 0 and 255
+  linearity = cv1Value >> 1;  // now it's between 0 and 511
   shape = potValue >> 2;
-  // Serial.print((int)linearity);
-  // Serial.print(", ");
-  // Serial.println((int)shape);
-
-  // if(Mode == 1){ //better way to update sweepvalue with sync frequency
-  // sweepValue = syncFrequency;
-  // }
-  // else
-  // {
-  //     if( (Mode == 0) && ( (cv1Value > 20) || (cv1Value < -20) )  ){// Don't want the frequency to be considered if the cv input is close to 0 (+/- 20) 
-  //       int totalcv = potValue+cv1Value;
-  //       if(totalcv <0)
-  //         totalcv = 0;
-  //       else if(totalcv>1023)
-  //         totalcv = 1023;
-          
-  //       sweepValue=pgm_read_float_near(hzcurve + totalcv);
-  //     }
-  //     else
-  //       sweepValue=pgm_read_float_near(hzcurve + potValue);
-
-  // }
-
-
-
 
   tempphasor=50*HZPHASOR;
 
@@ -356,107 +210,43 @@ unsigned long int previous_acc[4];
 
 
 // this is written by LUCAS to test the design
-unsigned int generator(unsigned long int acc, char waveshift, char lin, char channel) {
+unsigned int generator(unsigned long int acc, uint16_t shift, uint16_t lin, char channel) {
   #define M 511  // maxpoint
-  #define H 255  // halfpoint
   unsigned int shifted_acc = acc>>23;
-  unsigned int shift = waveshift << 1;  // double it to get from 0 to 510
-  unsigned int outval;
 
-  // SAW
-  // return shifted_acc;
-
-  // EXP SAW
-  // return (unsigned int)pgm_read_float_near(exptable + shifted_acc);
-  // outval = (unsigned int)fastExp(shifted_acc) - 1;
-
-  // EXP TRIANGLE
-  // if (shifted_acc < H) {
-  //   outval = (unsigned int)fastExp(shifted_acc*2) - 1;
-  // } else if (shifted_acc == H) {
-  //   outval = M;
-  // } else {
-  //   outval = (unsigned int)fastExp((M - shifted_acc)*2) - 1;
-  // }
-
-  // LOG TRIANGLE
-  // if (shifted_acc < H) {
-  //   outval = M - (unsigned int)fastExp((H - shifted_acc)*2) - 1;
-  // } else if (shifted_acc == H) {
-  //   outval = M;
-  // } else {
-  //   outval = M - (unsigned int)fastExp((shifted_acc - H)*2) - 1;
-  // }
-
-  // LIN SLOPESHIFT
-  // if (shifted_acc < shift) {
-  //   outval = (M * shifted_acc) / shift;
-  // } else {
-  //   outval = (M / (M - shift)) * (M - shifted_acc);
-  // }
-
-  // SHAPESHIFT SAW
-  // float logval = M - fastExp(M - shifted_acc);
-  // float expval = fastExp(shifted_acc);
-  // float linval = (float)shifted_acc;
-  // float mapped_lin = linmap(lin, 0, 255, 0, 1);
-  // outval = (unsigned int)asym_lin_map(mapped_lin, logval, linval, expval);
-
-
-  // SHAPESHIFT SLOPESHIFT
-  float logval = 0;
-  float expval = 0;
-  float linval = 0;
-
+  uint32_t linval = 0;
+  uint32_t expval = 0;
+  uint32_t logval = 0;
   if (shifted_acc < shift) {
-    float scaleval = M * 1.0 / shift;
+    uint32_t scaleval = (M << 7) / shift;
     linval = scaleval * shifted_acc;
-    expval = fastExp(linval);
-    logval = M - fastExp(scaleval * (shift - shifted_acc));
+    expval = pgm_read_word_near(exptable + (linval >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shift - shifted_acc) >> 7));
   } else {
-    float scaleval = M * 1.0 / (M - shift);
+    uint32_t scaleval = (M << 7) / (M - shift);
     linval = scaleval * (M - shifted_acc);
-    expval = fastExp(linval);
-    logval = M - fastExp(scaleval * (shifted_acc - shift));
+    expval = pgm_read_word_near(exptable + (linval >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shifted_acc - shift) >> 7));
   }
-  return M - (unsigned int)asym_lin_map(lin / 127.0 - 1, expval, linval, logval);
+  return M - (asym_lin_map(lin, expval, linval, logval) >> 7);
 }
 
-float asym_lin_map(float x, int low, int mid, int high) {
-  if (x <= -1.0) {
+int asym_lin_map(uint16_t x, int low, int mid, int high) {
+  if (x <= 0) {
     return low;
   }
-  if (x < 0) {
-    return x * (mid - low) + mid;
+  if (x < 255) {
+    return (x * (mid - low) >> 8) + low;
   }
-  if (x == 0.0) {
+  if (x == 255) {
     return mid;
   }
-  if (x > 0) {
-    return x * (high - mid) + mid;
+  if (x > 255) {
+    return ((x - 255) * (high - mid) >> 8) + mid;
   }
-  if (x >= 1.0) {
+  if (x >= 511) {
     return high;
   }
-}
-
-// Copyright 2021 Johan Rade (johan.rade@gmail.com)
-// Distributed under the MIT license (https://opensource.org/licenses/MIT)
-inline float fastExp(float x)
-{
-    constexpr float a = (1 << 23) / 0.69314718f;
-    constexpr float b = (1 << 23) * (127 - 0.043677448f);
-    constexpr float scalarval = log(511.0) / 510.0;
-    x = a * x * scalarval + b;
-
-    constexpr float c = (1 << 23);
-    constexpr float d = (1 << 23) * 255;
-    if (x < c || x > d)
-        x = (x < c) ? 0.0f : d;
-
-    uint32_t n = static_cast<uint32_t>(x);
-    memcpy(&x, &n, 4);
-    return x - 1;
 }
 
 void setupTimers() // used to set up fast PWM on pins 1,9,2,3
@@ -544,44 +334,6 @@ void TCC0_Handler()
 }
 
 
-void readSettings (void)
-{
-  char x;
-  char c = 'S';
-  int y = 1;
-  init_storage.read(x);
-  if(x == 'S')  //S means eeprom has been initialized.
-  {
-    wave_storage.read(waveSelect);
-    div_storage.read(divSelect);
-  }
-  else
-  {
-    //we initialize, no 'S' found
-    init_storage.write(c);  //use variables because this library hates constants
-    wave_storage.write(y);
-    div_storage.write(y);
-    divSelect = 1;
-    waveSelect = 1;
-  }
-
-}
-
-void saveSettings (void)
-{
-  int x;
-  wave_storage.read(x);
-  
-  if(x != waveSelect)
-    wave_storage.write(waveSelect);  // <-- save the waveSelect 
-
-   div_storage.read(x);
-  
-  if(x != divSelect)
-    div_storage.write(divSelect);  // <-- save the waveSelect  
-  
-
-}
 
 #define NUMREADINGS 50
 unsigned int pot[NUMREADINGS];
