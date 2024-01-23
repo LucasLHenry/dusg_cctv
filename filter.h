@@ -1,14 +1,9 @@
-#define NUMREADINGS 50
-#define FREQ 0
-#define POT 1
-
-
 unsigned int pot[NUMREADINGS];
 unsigned int freq[NUMREADINGS];
 
 void filterPut (char input, unsigned int newreading)
 {
-  static unsigned char potptr=0;
+  static unsigned char potptr = 0;
   static unsigned char freqptr = 0;
 
   if(input == POT)
@@ -36,23 +31,17 @@ unsigned int filterGet (bool input)
   unsigned char y;
 
   x = 0;
-  if(input == POT)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + pot[y];
+  if (input == POT) {
+    for (y = 0; y < NUMREADINGS; y++) {
+      x += pot[y];
     }
-  }
-  else if(input == FREQ)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + freq[y];
+  } else if (input == FREQ) {
+    for (y = 0; y < NUMREADINGS; y++) {
+      x += freq[y];
     }
   }
 
-  z = x;
-  z = z/NUMREADINGS;
-  z = z + 0.5;
+  z = ((float)x) / NUMREADINGS;
+  z += 0.5;
   return (unsigned int)z;
 }

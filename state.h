@@ -1,5 +1,3 @@
-#define NUM_MODULES 4
-
 typedef enum Mode {
     VCO,
     LFO,
@@ -7,13 +5,13 @@ typedef enum Mode {
 } Mode;
 
 typedef struct Module {
-    unsigned long int acc;
-    unsigned long int phasor;
+    uint64_t acc;
+    uint64_t phasor;
     Mode mode;
-    unsigned short int shape;
-    unsigned short int lin;
-    unsigned long int upslope;
-    unsigned long int downslope;
+    uint16_t shape;
+    uint16_t lin;
+    uint64_t upslope;
+    uint64_t downslope;
 } Module;
 
 typedef struct State {
