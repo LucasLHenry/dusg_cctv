@@ -6,21 +6,20 @@
 
 #include <FlashAsEEPROM_SAMD.h>
 #include <avr/pgmspace.h>
-#include "hertzvals.h"
-#include "exponential.h"
 #include <Arduino.h>
 #include <string.h>
 
-#define TRIANGLE 1
-#define SAW 2
-#define SQUARE 3
-#define RANDOM 4 
-
-#define FREQ 0
-#define POT 1
+#include "hertzvals.h"
+#include "exponential.h"
+#include "filter.h"
+#include "state.h"
 
 
 #define HZPHASOR 91183 //phasor value for 1 hz.
+#define M 511
+#define H 255
+#define DEFAULT_SHIFT 255
+#define DEFAULT_LIN 255
 
 
 long unsigned int accumulator1 = 0;
@@ -32,8 +31,8 @@ long unsigned int phasor2;
 long unsigned int phasor3;
 long unsigned int phasor4;
 
-char shape = 255;
-char linearity = 128;
+uint16_t shape = 255;
+uint16_t linearity = 128;
 
 char randNum[4];
 
@@ -56,7 +55,7 @@ int waveSelect = 1;
 int divSelect = 1;
 unsigned long lastSettingsSave = 0;
 
-bool Mode = 0; // 0 = POT and 1 = SYNC 
+bool mode = 0; // 0 = POT and 1 = SYNC 
 float sweepValue;
 long unsigned int Time1 = 0;
 long unsigned int Time2 = 0; 
@@ -66,6 +65,7 @@ void timerIsr();
 void setupTimers();
 void TCC0_Handler();
 
+State ms; // for machine state
 
 
 // +++++++++++++++++++++++++++++++++++ SETUP ++++++++++++++++++++++++++++++++++++++++
@@ -82,7 +82,15 @@ void setup() {
   randomSeed(analogRead(A8));
   
   Serial.begin(9600);
-   
+  
+
+  // state initialization
+  constexpr uint64_t default_upslope = (M << 7) / DEFAULT_SHIFT;
+  constexpr uint64_t default_downslope = (M << 7) / (M - DEFAULT_SHIFT);
+  Module default_module = {0, 0, VCO, DEFAULT_SHIFT, DEFAULT_LIN, default_upslope, default_downslope};
+  for (int i = 0; i < 4; i++) {
+    ms.mods[0] = default_module;
+  }
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++ MAIN LOOP +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -177,7 +185,7 @@ void loop() {
   if(modeCounter>100) //do this only every 100 samples
   {
     if((potValue - oldpotValue)> 20 || (oldpotValue - potValue) > 20){
-    Mode = 0; 
+      mode = 0; 
     }
 
     oldpotValue = potValue;
@@ -190,17 +198,34 @@ void loop() {
   
   cv1Value = 1023-cv1Value; // so we want to invert it (making -12V correspond to 0V on the XIAO)
   // cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
-  linearity = cv1Value >> 1;  // now it's between 0 and 511
-  shape = potValue >> 2;
+  uint16_t new_linearity = cv1Value >> 1;  // now it's between 0 and 511
+  uint16_t new_shape = potValue >> 1;
+
+  if (ms.mods[0].lin != new_linearity) {
+    ms.mods[0].lin = new_linearity;
+    ms.mods[1].lin = new_linearity;
+    ms.mods[2].lin = new_linearity;
+    ms.mods[3].lin = new_linearity;
+  }
+
+  if (ms.mods[0].shape != new_shape) {
+    uint32_t new_upslope = (M << 7) / new_shape;
+    uint32_t new_downslope = (M << 7) / (M - new_shape);
+    for (int i = 0; i < 4; i++) {
+      ms.mods[i].upslope = new_upslope;
+      ms.mods[i].downslope = new_downslope;
+      ms.mods[i].shape = new_shape;
+    }
+  }
+
 
   tempphasor=50*HZPHASOR;
 
 
- 
-  phasor1=(unsigned long int)tempphasor/divs[divSelect-1][0];
-  phasor2=(unsigned long int)tempphasor/divs[divSelect-1][1]; // dividing down for the slower outputs 
-  phasor3=(unsigned long int)tempphasor/divs[divSelect-1][2];
-  phasor4=(unsigned long int)tempphasor/divs[divSelect-1][3];
+  ms.mods[0].phasor=(unsigned long int)tempphasor;
+  ms.mods[1].phasor=(unsigned long int)tempphasor; // dividing down for the slower outputs 
+  ms.mods[2].phasor=(unsigned long int)tempphasor;
+  ms.mods[3].phasor=(unsigned long int)tempphasor;
 
 }
 
@@ -210,41 +235,38 @@ unsigned long int previous_acc[4];
 
 
 // this is written by LUCAS to test the design
-unsigned int generator(unsigned long int acc, uint16_t shift, uint16_t lin, char channel) {
-  #define M 511  // maxpoint
-  unsigned int shifted_acc = acc>>23;
+unsigned int generator(Module mod) {
+  unsigned int shifted_acc = mod.acc>>23;
 
   uint32_t linval = 0;
   uint32_t expval = 0;
   uint32_t logval = 0;
-  if (shifted_acc < shift) {
-    uint32_t scaleval = (M << 7) / shift;
-    linval = scaleval * shifted_acc;
+  if (shifted_acc < mod.shape) {
+    linval = mod.upslope * shifted_acc;
     expval = pgm_read_word_near(exptable + (linval >> 7));
-    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shift - shifted_acc) >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (mod.upslope * (mod.shape - shifted_acc) >> 7));
   } else {
-    uint32_t scaleval = (M << 7) / (M - shift);
-    linval = scaleval * (M - shifted_acc);
+    linval = mod.downslope * (M - shifted_acc);
     expval = pgm_read_word_near(exptable + (linval >> 7));
-    logval = (M << 7) - pgm_read_word_near(exptable + (scaleval * (shifted_acc - shift) >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (mod.downslope * (shifted_acc - mod.shape) >> 7));
   }
-  return M - (asym_lin_map(lin, expval, linval, logval) >> 7);
+  return M - (asym_lin_map(mod.lin, expval, linval, logval) >> 7);
 }
 
 int asym_lin_map(uint16_t x, int low, int mid, int high) {
   if (x <= 0) {
     return low;
   }
-  if (x < 255) {
+  if (x < H) {
     return (x * (mid - low) >> 8) + low;
   }
-  if (x == 255) {
+  if (x == H) {
     return mid;
   }
-  if (x > 255) {
-    return ((x - 255) * (high - mid) >> 8) + mid;
+  if (x > H) {
+    return ((x - H) * (high - mid) >> 8) + mid;
   }
-  if (x >= 511) {
+  if (x >= M) {
     return high;
   }
 }
@@ -319,73 +341,16 @@ void setupTimers() // used to set up fast PWM on pins 1,9,2,3
 
 void TCC0_Handler() 
 {
-  if (TCC0->INTFLAG.bit.CNT == 1) { //*************************************************
-   accumulator1 = accumulator1 + phasor1;
-   accumulator2 = accumulator2 + phasor2;
-   accumulator3 = accumulator3 + phasor3;
-   accumulator4 = accumulator4 + phasor4;
+  if (TCC0->INTFLAG.bit.CNT == 1) {
+    ms.mods[0].acc += ms.mods[0].phasor;
+    ms.mods[1].acc += ms.mods[1].phasor;
+    ms.mods[2].acc += ms.mods[2].phasor;
+    ms.mods[3].acc += ms.mods[3].phasor;
    delayMicroseconds(6);
-   REG_TCC0_CC0 = generator(accumulator1, shape, linearity, 3); // pin 9 //#4
-   // REG_TCC0_CC1 = generator(accumulator4, shape, linearity, 0); // pin 2 //#1
-  //  REG_TCC0_CC2 = generator(accumulator2, shape, linearity, 1); // pin 1 //#2  
-  //  REG_TCC0_CC3 = generator(accumulator3, shape, linearity, 2); // pin 3 //#3
-   TCC0->INTFLAG.bit.CNT = 1; //*******************************************************
+   REG_TCC0_CC0 = generator(ms.mods[0]); // pin 9 //#4
+   REG_TCC0_CC1 = generator(ms.mods[1]); // pin 2 //#1
+   REG_TCC0_CC2 = generator(ms.mods[2]); // pin 1 //#2  
+   REG_TCC0_CC3 = generator(ms.mods[3]); // pin 3 //#3
+   TCC0->INTFLAG.bit.CNT = 1;
   }
-}
-
-
-
-#define NUMREADINGS 50
-unsigned int pot[NUMREADINGS];
-unsigned int freq[NUMREADINGS];
-
-void filterPut (char input, unsigned int newreading)
-{
-  static unsigned char potptr=0;
-  static unsigned char freqptr = 0;
-
-  if(input == POT)
-  {
-    pot[potptr] = newreading;
-    potptr++;
-    if(potptr >= NUMREADINGS)
-      potptr=0;
-  }
-
-  else if(input == FREQ)
-  {
-    freq[freqptr] = newreading;
-    freqptr++;
-    if(freqptr >= NUMREADINGS)
-      freqptr = 0;
-  }
-  
-}
-
-unsigned int filterGet (bool input)
-{
-  unsigned long int x;
-  float z;
-  unsigned char y;
-
-  x = 0;
-  if(input == POT)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + pot[y];
-    }
-  }
-  else if(input == FREQ)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + freq[y];
-    }
-  }
-
-  z = x;
-  z = z/NUMREADINGS;
-  z = z + 0.5;
-  return (unsigned int)z;
 }
