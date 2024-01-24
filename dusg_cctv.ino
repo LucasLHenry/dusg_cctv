@@ -34,17 +34,12 @@ void setup() {
   constexpr uint64_t default_upslope = UPSLOPE(DEFAULT_SHAPE);
   constexpr uint64_t default_downslope = DOWNSLOPE(DEFAULT_SHAPE);
   Module default_module = {0, 0, VCO, DEFAULT_SHAPE, DEFAULT_LIN, default_upslope, default_downslope};
-  for (int i = 0; i < NUM_MODULES; i++) {
+  for (uint8_t i = 0; i < NUM_MODULES; i++) {
     ms.mods[i] = default_module;
   }
 }
 
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++ MAIN LOOP +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
 void loop() {
-  
-   
-   
   float tempphasor;
   int cv1Value; // to store value of cv1 (Frequency)
   static int potValue; // to store the value of the potentiometer
@@ -69,30 +64,25 @@ void loop() {
   if (ms.mods[0].shape != new_shape) {
     uint32_t new_upslope = UPSLOPE(new_shape);
     uint32_t new_downslope = DOWNSLOPE(new_shape);
-    for (int i = 0; i < 4; i++) {
+    for (uint8_t i = 0; i < NUM_MODULES; i++) {
       ms.mods[i].upslope = new_upslope;
       ms.mods[i].downslope = new_downslope;
       ms.mods[i].shape = new_shape;
     }
-  }
+  }⌈
 
+  tempphasor=50*HZPHASOR;⌈
 
-  tempphasor=50*HZPHASOR;
-
-
-  ms.mods[0].phasor=(unsigned long int)tempphasor;
-  ms.mods[1].phasor=(unsigned long int)tempphasor; // dividing down for the slower outputs 
-  ms.mods[2].phasor=(unsigned long int)tempphasor;
-  ms.mods[3].phasor=(unsigned long int)tempphasor;
-
+  ms.mods[0].phasor = (uint64_t)tempphasor;
+  ms.mods[1].phasor = (uint64_t)tempphasor; // dividing down for the slower outputs 
+  ms.mods[2].phasor = (uint64_t)tempphasor;
+  ms.mods[3].phasor = (uint64_t)tempphasor;
 }
-
-
 
 // core waveshape generator algorithm.
 // uses lookup table to get exp and log values, calculates lin values
 // maps between them based on the linearity control
-unsigned int generator(uint8_t idx) {
+uint32_t generator(uint8_t idx) {
   uint32_t shifted_acc = ms.mods[idx].acc>>23;
 
   uint32_t linval = 0;
@@ -111,7 +101,7 @@ unsigned int generator(uint8_t idx) {
   return M - (asym_lin_map(ms.mods[idx].lin, expval, linval, logval) >> 7);
 }
 
-int asym_lin_map(uint16_t x, int low, int mid, int high) {
+uint32_t asym_lin_map(uint16_t x, int low, int mid, int high) {
   if (x <= 0) return low;
   if (x < H) return (x * (mid - low) >> 8) + low;
   if (x == H) return mid;
