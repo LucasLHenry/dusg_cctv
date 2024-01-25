@@ -79,7 +79,6 @@ void loop() {
     }
   }
 
-
   tempphasor=50*HZPHASOR;
   ms.mods[0].phasor=(unsigned long int)tempphasor;
   ms.mods[1].phasor=(unsigned long int)tempphasor; // dividing down for the slower outputs 

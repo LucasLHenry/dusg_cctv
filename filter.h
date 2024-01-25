@@ -1,15 +1,14 @@
+#define FREQ 1
+#define POT 0
 #define NUMREADINGS 50
-#define FREQ 0
-#define POT 1
 
+uint32_t pot[NUMREADINGS];
+uint32_t freq[NUMREADINGS];
 
-unsigned int pot[NUMREADINGS];
-unsigned int freq[NUMREADINGS];
-
-void filterPut (char input, unsigned int newreading)
+void filterPut (char input, uint32_t newreading)
 {
-  static unsigned char potptr=0;
-  static unsigned char freqptr = 0;
+  static uint8_t potptr = 0;
+  static uint8_t freqptr = 0;
 
   if(input == POT)
   {
@@ -29,30 +28,24 @@ void filterPut (char input, unsigned int newreading)
   
 }
 
-unsigned int filterGet (bool input)
+uint32_t filterGet (bool input)
 {
-  unsigned long int x;
+  uint64_t x;
   float z;
-  unsigned char y;
+  uint8_t y;
 
   x = 0;
-  if(input == POT)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + pot[y];
+  if (input == POT) {
+    for (y = 0; y < NUMREADINGS; y++) {
+      x += pot[y];
     }
-  }
-  else if(input == FREQ)
-  {
-    for (y=0;y<NUMREADINGS;y++)
-    {
-      x = x + freq[y];
+  } else if (input == FREQ) {
+    for (y = 0; y < NUMREADINGS; y++) {
+      x += freq[y];
     }
   }
 
-  z = x;
-  z = z/NUMREADINGS;
-  z = z + 0.5;
-  return (unsigned int)z;
+  z = ((float)x) / NUMREADINGS;
+  z += 0.5;
+  return (uint32_t)z;
 }
