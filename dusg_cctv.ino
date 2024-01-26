@@ -59,23 +59,23 @@ void loop() {
   
   cv1Value = 1023-cv1Value; // so we want to invert it (making -12V correspond to 0V on the XIAO)
   // cv1Value = cv1Value - 565;  //at this point cv1Value contains between -512 and +511 (this line used to center values around zero)
-  uint16_t new_linearity = cv1Value >> 1;  // now it's between 0 and 511
-  uint16_t new_shape = potValue >> 1;
-
-  if (ms.mods[0].lin != new_linearity) {
-    ms.mods[0].lin = new_linearity;
-    ms.mods[1].lin = new_linearity;
-    ms.mods[2].lin = new_linearity;
-    ms.mods[3].lin = new_linearity;
-  }
+  uint16_t new_shape = cv1Value >> 1;  // now it's between 0 and 511
+  uint16_t new_slope = potValue >> 1;
 
   if (ms.mods[0].shape != new_shape) {
-    uint32_t new_upslope = UPSLOPE(new_shape);
-    uint32_t new_downslope = DOWNSLOPE(new_shape);
+    ms.mods[0].shape = new_shape;
+    ms.mods[1].shape = new_shape;
+    ms.mods[2].shape = new_shape;
+    ms.mods[3].shape = new_shape;
+  }
+
+  if (ms.mods[0].slope != new_slope) {
+    uint32_t new_upslope = UPSLOPE(new_slope);
+    uint32_t new_downslope = DOWNSLOPE(new_slope);
     for (int i = 0; i < 4; i++) {
       ms.mods[i].upslope = new_upslope;
       ms.mods[i].downslope = new_downslope;
-      ms.mods[i].shape = new_shape;
+      ms.mods[i].slope = new_slope;
     }
   }
 
@@ -92,16 +92,16 @@ unsigned int generator(uint8_t idx) {
   uint32_t linval = 0;
   uint32_t expval = 0;
   uint32_t logval = 0;
-  if (shifted_acc < ms.mods[idx].shape) {
+  if (shifted_acc < ms.mods[idx].slope) {
     linval = ms.mods[idx].upslope * shifted_acc;
     expval = pgm_read_word_near(exptable + (linval >> 7));
-    logval = (M << 7) - pgm_read_word_near(exptable + (ms.mods[idx].upslope * (ms.mods[idx].shape - shifted_acc) >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (ms.mods[idx].upslope * (ms.mods[idx].slope - shifted_acc) >> 7));
   } else {
     linval = ms.mods[idx].downslope * (M - shifted_acc);
     expval = pgm_read_word_near(exptable + (linval >> 7));
-    logval = (M << 7) - pgm_read_word_near(exptable + (ms.mods[idx].downslope * (shifted_acc - ms.mods[idx].shape) >> 7));
+    logval = (M << 7) - pgm_read_word_near(exptable + (ms.mods[idx].downslope * (shifted_acc - ms.mods[idx].slope) >> 7));
   }
-  return M - (asym_lin_map(ms.mods[idx].lin, expval, linval, logval) >> 7);
+  return M - (asym_lin_map(ms.mods[idx].shape, expval, linval, logval) >> 7);
 }
 
 int asym_lin_map(uint16_t x, int low, int mid, int high) {
@@ -119,7 +119,7 @@ void TCC0_Handler()
     ms.mods[1].acc += ms.mods[1].phasor;
     ms.mods[2].acc += ms.mods[2].phasor;
     ms.mods[3].acc += ms.mods[3].phasor;
-    delayMicroseconds(6);
+    delayMicroseconds(4);  // modify to deal with weird spikes
     REG_TCC0_CC0 = generator(0); // pin 9 //#4
     REG_TCC0_CC1 = generator(1); // pin 2 //#1
     REG_TCC0_CC2 = generator(2); // pin 1 //#2  
