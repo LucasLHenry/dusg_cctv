@@ -1,13 +1,8 @@
-//V1.1
-//March 30 2023
-//Implemented changes suggested by ryokell
-//Out of order divs
-//Non-1 first div
-
 #include <FlashAsEEPROM_SAMD.h>
 #include <avr/pgmspace.h>
 #include <Arduino.h>
 
+#include "pins.h"
 #include "hertzvals.h"
 #include "exponential.h"
 #include "filter.h"
