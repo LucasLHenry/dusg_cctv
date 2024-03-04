@@ -1,3 +1,5 @@
+#include "pins.h"
+
 #define NUM_MODULES 4
 
 typedef enum Mode {
@@ -18,4 +20,5 @@ typedef struct Module {
 
 typedef struct State {
     Module mods[NUM_MODULES];
+    CRGB leds[NUM_LEDs];
 } State;

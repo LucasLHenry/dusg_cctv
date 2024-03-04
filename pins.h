@@ -1,4 +1,6 @@
 // pin assignments for the SAM D21
+#pragma once
+
 
 #define LIN_TIME_A A6
 #define SIG_IN_A A1
@@ -15,6 +17,7 @@
 #define TRIG_OUT_B 6
 
 #define LEDs 2
+#define NUM_LEDs 23
 #define ALGO_ENC_1 5
 #define ALGO_ENC_2 11
 #define ALGO_BTN 13

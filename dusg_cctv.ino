@@ -1,20 +1,23 @@
 #include <FlashAsEEPROM_SAMD.h>
 #include <avr/pgmspace.h>
 #include <Arduino.h>
+#include <FastLED.h>
+#include <ResponsiveAnalogRead.h>
 
 #include "pins.h"
 #include "hertzvals.h"
-#include "exponential.h"
 #include "filter.h"
 #include "state.h"
 #include "timers.h"
+#include "exponential.h"
 
 
 #define HZPHASOR 91183 //phasor value for 1 hz.
-#define M 511
-#define H 255
 #define DEFAULT_SHAPE 255
 #define DEFAULT_LIN 255
+
+#define M 511
+#define H 255
 #define UPSLOPE(x) ((M << 7) / x)
 #define DOWNSLOPE(x) ((M << 7) / (M - x))
 
@@ -28,7 +31,6 @@ void setup() {
   pinMode(2, OUTPUT);
   pinMode(3, OUTPUT);
   pinMode(13, OUTPUT); // using pin 13 to check interupt on timer 1
-  pinMode(6, INPUT_PULLUP); // pin 7 pushbutton to select waveform
   pinMode(A10, INPUT); //used for analogReading sync (cv2) 
 
   setupTimers(); //  **this may not be the right location
@@ -40,6 +42,7 @@ void setup() {
   for (int i = 0; i < 4; i++) {
     ms.mods[0] = default_module;
   }
+  FastLED.addLeds<NEOPIXEL, LEDs>(ms.leds, NUM_LEDs);  // set up LEDs
 }
 
 void loop() {
@@ -81,6 +84,7 @@ void loop() {
   ms.mods[3].phasor=(unsigned long int)tempphasor;
 }
 
+
 unsigned int generator(uint8_t idx) {
   unsigned int shifted_acc = ms.mods[idx].acc>>23;
 
@@ -106,6 +110,7 @@ int asym_lin_map(uint16_t x, int low, int mid, int high) {
   if (x > H) return ((x - H) * (high - mid) >> 8) + mid;
   if (x >= M) return high;
 }
+
 
 void TCC0_Handler() 
 {

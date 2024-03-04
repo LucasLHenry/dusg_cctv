@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "exponential.h": "c",
+        "generator.c": "cpp"
+    }
+}

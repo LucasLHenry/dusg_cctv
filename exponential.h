@@ -1,4 +1,4 @@
-unsigned int exptable[512] PROGMEM {
+const unsigned int exptable[512] PROGMEM {
 0,
 2,
 3,
